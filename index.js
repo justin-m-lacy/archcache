@@ -1,60 +1,129 @@
 import Item from 'src/item';
+import * as Emitter from 'eventemitter3';
 
-export default class {
+export default class Cache extends Emitter {
 
 	/**
 	 * {string}
+	 * NOTE: Setting cacheKey directly will not propagate changes
+	 * to subcaches. Use settings() function.
 	 */
 	get cacheKey() { return this._cacheKey; }
+	set cacheKey(v) {
+		this._cacheKey = this._fixKey(v);
+	}
+
+	get loader() { return this._loader; }
+	set loader(v) { this._loader = v; }
+
+	get saver() { return this._saver; }
+	set saver(v) { this._saver = v; }
+
+	get reviver() { return this._reviver; }
+	set reviver(v) { this._reviver =v;}
 
 	/**
 	 * @constructor
-	 * @param { string=>Promise<*>} loader - function to load items not found in cache from a data store.
-	 * @param { (string,*)=>Promise } saver - function to store a keyed item in the data store.
-	 * @param { string => Promise<boolean> } checker - function to check the existence of a keyed item in the data store.
-	 * @param { string=>Promise<boolean> } deleter - function to delete cached items in a data store.
-	 * @param {string} [cacheKey=''] 
-	 * @param { *=>* } [reviver=null] optional function to revive objects loaded from data store.
+	 * @param {Object} [opts=null] - initialization options.
+	 * @param { string=>Promise<*>} opts.loader - function to load items not found in cache from a data store.
+	 * @param { (string,*)=>Promise } opts.saver - function to store a keyed item in the data store.
+	 * @param { string => Promise<boolean> } opts.checker - function to check the existence of a keyed item in the data store.
+	 * @param { string=>Promise<boolean> } opts.deleter - function to delete cached items in a data store.
+	 * @param {string} [opts.cacheKey=''] 
+	 * @param { *=>* } [opts.reviver=null] optional function to revive objects loaded from data store.
 	 */
-	constructor( loader, saver, checker, deleter, cacheKey = '', reviver=null) {
+	constructor( opts=null ) {
 
-		this._cacheKey = cacheKey;
+		if ( opts ) {
 
-		this.loader = loader;
-		this.saver = saver;
-		this.checker = checker;
-		this.deleter = deleter;
-		this.reviver = reviver;
+			this.cacheKey = opts.cacheKey;
+
+			this.loader = opts.loader;
+			this.saver = opts.saver;
+			this.checker = opts.checker;
+			this.deleter = opts.deleter;
+			this.reviver = opts.reviver;
+
+		} else {
+	
+			this._cacheKey = '/';
+
+		}
 
 		this._dict = {};
 
 	}
 
 	/**
-	 * Creates a subcache of this cache and stores it in the dictionary.
+	 * 
+	 * @param {Object} opts - options being set.
+	 * @param { string=>Promise<*>} opts.loader - function to load items not found in cache from a data store.
+	 * @param { (string,*)=>Promise } opts.saver - function to store a keyed item in the data store.
+	 * @param { string => Promise<boolean> } opts.checker - function to check the existence of a keyed item in the data store.
+	 * @param { string=>Promise<boolean> } opts.deleter - function to delete cached items in a data store.
+	 * @param {string} [opts.cacheKey=''] 
+	 * @param {boolean} [propagate=true] - whether the settings should be propagated
+	 * to child caches.
+	 */
+	settings( opts, propagate=true ) {
+
+		if ( !opts ) return;
+
+		if ( opts.hasOwnProperty('loader') ) this._loader = opts.loader;
+		if ( opts.hasOwnProperty('saver') ) this._saver = opts.saver;
+		if ( opts.hasOwnProperty('checker') ) this._checker = opts.checker;
+		if ( opts.hasOwnProperty('deleter') ) this._deleter = opts.deleter;
+		if ( opts.hasOwnProperty('reviver') ) this._reviver = opts.reviver;
+
+		var newKey = opts.hasOwnProperty( 'cacheKey');
+		this.cacheKey = newKey ? opts.cacheKey : this._cacheKey;
+
+		if ( propagate ) {
+
+			let dict = this._dict;
+			var baseKey = this.cacheKey;
+
+			for( let k in dict ) {
+
+				var item = dict[k];
+
+				if ( item instanceof Cache ) {
+					if ( newKey ) opts.cacheKey = this._subkey( baseKey, k );
+					item.settings( opts );
+				}
+
+			}
+
+		}
+
+
+	}
+
+	/**
+	 * Creates a subcache within this cache at the given subcache key.
 	 * @param {string} subkey - key used to distinguish subcache items.
-	 * @parem {function|null} [reviver=null]
+	 * @param {function|null} [reviver=null]
 	 * @returns {Cache}
 	 */
-	makeSubCache( subkey, reviver=null ) {
+	subcache( subkey, reviver=null ) {
 
-		if ( subkey.charAt( subkey.length-1 ) !== '/' ) subkey += '/';
+		let cache = new Cache({
 
-		let cache = new exports.Cache(
-			this.loader, this.saver, this.checker, this.deleter, this._cacheKey + '/' + subkey, reviver );
-
-		//console.log('subcache key: ' + this._cacheKey + '/' + subkey );
+				loader:this.loader, saver:this.saver, checker:this.checker, deleter:this.deleter,
+				cacheKey:this.subkey( this._cacheKey, subkey ),
+				reviver:reviver
+			});
 
 		this._dict[subkey] = cache;
 		return cache;
 	}
 
 	/**
-	 * Asynchronous operation. Attempts to find value in local cache,
-	 * then tries to load from backing store if not found.
+	 * Attempts to find keyed value in the local cache.
+	 * If none is found, the value is loaded from the backing store.
 	 * @async
 	 * @param {string} key
-	 * @returns {Promise<*>}
+	 * @returns {Promise<*>} - returns undefined if the value is not found.
 	 */
 	async fetch( key ) {
 
@@ -64,17 +133,23 @@ export default class {
 			return item.data;
 		}
 
-		if ( !this.loader ) return null;
+		if ( !this.loader ) return undefined;
 
 		//console.log( 'fetching from file: ' + key );
-		let val = await this.loader( this._cacheKey + key );
-		if ( val ) {
+		try {
+			let val = await this.loader( this._cacheKey + key );
+			if ( val ) {
 
-			if ( this.reviver ) val = this.reviver(val);
-			this._dict[key] = new Item(key, val, false );
+				if ( this.reviver ) val = this.reviver(val);
+				this._dict[key] = new Item(key, val, false );
 
+			}
+			return val;
+		} catch ( e ) {
+
+			this.emit( 'error', 'fetch', key );
+			return undefined;
 		}
-		return val;
 
 	}
 
@@ -83,6 +158,7 @@ export default class {
 	 * @async
 	 * @param {string} key 
 	 * @param {*} value - value to store.
+	 * @returns {Promise}
 	 */
 	async store( key, value ) {
 
@@ -92,25 +168,31 @@ export default class {
 		item.markSaved();
 
 		if ( this.saver ) {
-			await this.saver( this._cacheKey + key, value );
+
+			return this.saver( this._cacheKey + key, value ).then(
+
+				null, err=>{
+					return err;
+				}
+			);
+
 		}
 
 	}
 
 	/**
-	 * Attempts to retrieve a value from the cache
-	 * without checking backing store.
+	 * Attempts to retrieve a value from the cache without checking the backing store.
 	 * @param {string} key
-	 * @returns {*} 
+	 * @returns {*} - Returns undefined if no value found. 
 	 */
 	get( key ) {
 
 		let it = this._dict[key];
-		if ( it ) {
+		if ( it !== undefined ) {
 			it.lastAccess = Date.now();
 			return it.data;
 		}
-		return null;
+		return undefined;
 
 	}
 
@@ -129,9 +211,25 @@ export default class {
 	}
 
 	/**
+	 * Convert a cache key into valid cacheKey format.
+	 * @param {string} key
+	 * @returns {string}
+	 */
+	_fixKey( key ) {
+		if ( typeof key !== 'string') return '/';
+		if ( key.length === 0 || key.charAt( key.length-1 ) !== '/' ) return key + '/';
+		return key;
+	}
+
+	_subkey( parentKey='/', key='' ) {
+		return parentKey + this._fixKey(key);
+	}
+
+	/**
 	 * Deletes object from local cache and from the backing store.
 	 * @async
-	 * @param {string} key 
+	 * @param {string} key
+	 * @returns {Promise}
 	 */
 	async delete( key ) {
 
@@ -139,20 +237,21 @@ export default class {
 
 		if ( this.deleter != null ) {
 
-			try {
-				 await this.deleter( this._cacheKey + key );
-
-			} catch(e) {console.log(e);}
+			return this.deleter( this._cacheKey + key ).then(
+				null,
+				err=>err
+			);
 
 		}
 	
 	}
 
 	/**
-	 * backup any items that have not been saved
-	 * for at least the given time span.
+	 * backup any items that have not been saved within the given timespan.
 	 * @async
+	 * @emits 'backup'
 	 * @param {number} time - time in ms since last save.
+	 * @returns {Promise}
 	 */
 	async backup( time=1000*60*2 ) {
 
@@ -161,29 +260,32 @@ export default class {
 		let now = Date.now();
 		let dict = this._dict;
 
+		let saves = [];
+
 		for( let k in dict ) {
 
 			var item = dict[k];
-			if ( item instanceof exports.Cache ) {
+			if ( item instanceof Cache ) {
 
 				//subcache.
-				item.backup( time );
+				saves.push( item.backup( time ) );
 
-			} else {
+			} else if ( item.dirty && (now - item.lastSave) > time ) {
 
-				try {
-					if ( item.dirty && (now - item.lastSave) > time ) {
-
-						item.markSaved( now );
-
-						//console.log( 'BACKING UP: ' + item.key );
-						await this.saver( this._cacheKey + item.key, item.data );
-					}
-				} catch ( e ) { console.log(e);}
+				saves.push( this.saver( this._cacheKey + item.key, item.data ).then(
+					null, err=>err
+				) )
 
 			}
 
 		} // for
+
+		Promise.all( saves ).then(
+			vals=>{
+				this.emit( 'backup', this, vals );
+				return vals;
+			}
+		);
 
 	}
 
@@ -201,29 +303,35 @@ export default class {
 		let now = Date.now();
 		let dict = this._dict;
 
+		let saves = [];
+
 		for( let k in dict ) {
 
 			var item = dict[k];
-			if ( item instanceof exports.Cache ) {
+			if ( item instanceof Cache ) {
 
-				item.cleanup( time );
+				saves.push( item.cleanup( time ) );
 
 			} else if ( now - item.lastAccess > time ) {
 
-				// done first to prevent race conditions after save.
+				// done first to prevent race conditions on save.
 				delete dict[k];
 
 				if ( item.dirty ) {
 
-					try {						
-						await this.saver( this._cacheKey + item.key, item.data );
-					} catch ( e ) { console.log(e);}
+					saves.push(
+						this.saver( this._cacheKey + item.key, item.data ).then( null, err=>err )
+					);
 
 				}
 
 			}
 
 		} // for
+
+		return Promise.all( saves ).then( vals=>{
+			this.emit( 'cleanup', this, vals ); return vals
+		});
 
 	}
 
@@ -239,7 +347,7 @@ export default class {
 		for( let k in dict ) {
 
 			var item = dict[k];
-			if ( item instanceof exports.Cache ) {
+			if ( item instanceof Cache ) {
 
 				item._cleanNoSave( time );
 

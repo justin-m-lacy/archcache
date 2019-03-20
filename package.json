@@ -16,5 +16,8 @@
     "json"
   ],
   "author": "Justin Lacy",
-  "license": "ISC"
+  "license": "ISC",
+  "dependencies": {
+    "eventemitter3": "^3.1.0"
+  }
 }
