@@ -1,12 +1,14 @@
 import Item from 'src/item';
 import * as Emitter from 'eventemitter3';
 
+/**
+ * Setting option properties directly will not propagate changes
+ * to subcaches. Use settings() function.
+ */
 export default class Cache extends Emitter {
 
 	/**
 	 * {string}
-	 * NOTE: Setting cacheKey directly will not propagate changes
-	 * to subcaches. Use settings() function.
 	 */
 	get cacheKey() { return this._cacheKey; }
 	set cacheKey(v) {
@@ -25,12 +27,12 @@ export default class Cache extends Emitter {
 	/**
 	 * @constructor
 	 * @param {Object} [opts=null] - initialization options.
-	 * @param { string=>Promise<*>} opts.loader - function to load items not found in cache from a data store.
-	 * @param { (string,*)=>Promise } opts.saver - function to store a keyed item in the data store.
-	 * @param { string => Promise<boolean> } opts.checker - function to check the existence of a keyed item in the data store.
-	 * @param { string=>Promise<boolean> } opts.deleter - function to delete cached items in a data store.
 	 * @param {string} [opts.cacheKey=''] 
-	 * @param { *=>* } [opts.reviver=null] optional function to revive objects loaded from data store.
+	 * @param { string=>Promise<*>} [opts.loader=undefined] - function to load items not found in cache from a data store.
+	 * @param { (string,*)=>Promise<*> } [opts.saver=undefined] - function to store a keyed item in the data store.
+	 * @param { string=>Promise<boolean> } [opts.deleter=undefined] - function to delete cached item from a data store.
+	 * @param { string => Promise<boolean> } [opts.checker=undefined] - function to check the existence of an item in the data store.
+	 * @param { *=>* } [opts.reviver=undefined] optional function to revive objects loaded from data store.
 	 */
 	constructor( opts=null ) {
 
@@ -96,25 +98,33 @@ export default class Cache extends Emitter {
 
 		}
 
-
 	}
 
 	/**
-	 * Creates a subcache within this cache at the given subcache key.
-	 * @param {string} subkey - key used to distinguish subcache items.
+	 * Retrieves or creates a subcache with the given key.
+	 * @param {string} subkey - key of the subcache. Final key is prefixed with
+	 * the key of the parent cache.
 	 * @param {function|null} [reviver=null]
 	 * @returns {Cache}
 	 */
 	subcache( subkey, reviver=null ) {
 
+		let subkey = this._subkey( this._cacheKey, subkey );
+
+		let cache = this._dict[subkey];
+		if ( cache !== undefined && cache instanceof Cache ) return cache;
+
 		let cache = new Cache({
 
 				loader:this.loader, saver:this.saver, checker:this.checker, deleter:this.deleter,
-				cacheKey:this.subkey( this._cacheKey, subkey ),
+				cacheKey:subkey,
 				reviver:reviver
 			});
 
 		this._dict[subkey] = cache;
+
+		this.emit( 'subcreate', this, subkey );
+
 		return cache;
 	}
 
@@ -133,14 +143,16 @@ export default class Cache extends Emitter {
 			return item.data;
 		}
 
-		if ( !this.loader ) return undefined;
+		let loader = this.loader;
+		let reviver = this.reviver;
+		if ( !loader ) return undefined;
 
 		//console.log( 'fetching from file: ' + key );
 		try {
-			let val = await this.loader( this._cacheKey + key );
+			let val = await loader( this._cacheKey + key );
 			if ( val ) {
 
-				if ( this.reviver ) val = this.reviver(val);
+				if ( reviver ) val = this.reviver(val);
 				this._dict[key] = new Item(key, val, false );
 
 			}
@@ -167,9 +179,10 @@ export default class Cache extends Emitter {
 
 		item.markSaved();
 
-		if ( this.saver ) {
+		let saver = this.saver;
+		if ( saver ) {
 
-			return this.saver( this._cacheKey + key, value ).then(
+			return saver( this._cacheKey + key, value ).then(
 
 				null, err=>{
 					return err;
@@ -211,21 +224,6 @@ export default class Cache extends Emitter {
 	}
 
 	/**
-	 * Convert a cache key into valid cacheKey format.
-	 * @param {string} key
-	 * @returns {string}
-	 */
-	_fixKey( key ) {
-		if ( typeof key !== 'string') return '/';
-		if ( key.length === 0 || key.charAt( key.length-1 ) !== '/' ) return key + '/';
-		return key;
-	}
-
-	_subkey( parentKey='/', key='' ) {
-		return parentKey + this._fixKey(key);
-	}
-
-	/**
 	 * Deletes object from local cache and from the backing store.
 	 * @async
 	 * @param {string} key
@@ -255,7 +253,8 @@ export default class Cache extends Emitter {
 	 */
 	async backup( time=1000*60*2 ) {
 
-		if ( !this.saver ) return;
+		let saver = this.saver;
+		if ( !saver ) return;
 
 		let now = Date.now();
 		let dict = this._dict;
@@ -272,7 +271,7 @@ export default class Cache extends Emitter {
 
 			} else if ( item.dirty && (now - item.lastSave) > time ) {
 
-				saves.push( this.saver( this._cacheKey + item.key, item.data ).then(
+				saves.push( saver( this._cacheKey + item.key, item.data ).then(
 					null, err=>err
 				) )
 
@@ -298,7 +297,8 @@ export default class Cache extends Emitter {
 	 */
 	async cleanup( time=1000*60*5 ) {
 
-		if ( !this.saver ) return this._cleanNoSave(time);
+		let saver = this.saver;
+		if ( !saver ) return this._cleanNoSave(time);
 
 		let now = Date.now();
 		let dict = this._dict;
@@ -320,7 +320,7 @@ export default class Cache extends Emitter {
 				if ( item.dirty ) {
 
 					saves.push(
-						this.saver( this._cacheKey + item.key, item.data ).then( null, err=>err )
+						saver( this._cacheKey + item.key, item.data ).then( null, err=>err )
 					);
 
 				}
@@ -360,7 +360,7 @@ export default class Cache extends Emitter {
 	}
 
 	/**
-	 * Frees the local memory cache, but does not delete from backing store.
+	 * Removes an item from cache, but does not delete from data store.
 	 * @param {string} key 
 	 */
 	free( key ) { delete this._dict[key]; }
@@ -368,7 +368,7 @@ export default class Cache extends Emitter {
 
 	/**
 	 * Checks if the keyed data exists in the cache
-	 * or in the underlying backing store.
+	 * or in the data store.
 	 * @async
 	 * @param {string} key
 	 * @returns {boolean}
@@ -393,5 +393,25 @@ export default class Cache extends Emitter {
 		return this._dict.hasOwnProperty(key);
 	}
 
+	/**
+	 * Convert a cache key into valid cacheKey format.
+	 * @param {string} key
+	 * @returns {string}
+	 */
+	_fixKey( key ) {
+		if ( typeof key !== 'string') return '/';
+		if ( key.length === 0 || key.charAt( key.length-1 ) !== '/' ) return key + '/';
+		return key;
+	}
+
+	/**
+	 * Create a key for a subcache.
+	 * @param {string} parentKey 
+	 * @param {string} key
+	 * @returns {string} key created.
+	 */
+	_subkey( parentKey='/', key='' ) {
+		return parentKey + this._fixKey(key);
+	}
 
 }
