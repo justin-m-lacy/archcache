@@ -1,40 +1,54 @@
-import Item from 'src/item';
-import * as Emitter from 'eventemitter3';
+const Item = require( './src/item.js' );
+const Emitter = require( 'eventemitter3' );
 
 /**
  * Setting option properties directly will not propagate changes
  * to subcaches. Use settings() function.
  */
-export default class Cache extends Emitter {
+module.exports = class Cache extends Emitter {
 
 	/**
-	 * {string}
+	 * @property {string}
 	 */
 	get cacheKey() { return this._cacheKey; }
 	set cacheKey(v) {
 		this._cacheKey = this._fixKey(v);
 	}
 
+	/**
+	 * @property {string=>Promise<*> }
+	 */
 	get loader() { return this._loader; }
 	set loader(v) { this._loader = v; }
 
+	/**
+	 * @property {(string,*)=>Promise<*>}
+	 */
 	get saver() { return this._saver; }
 	set saver(v) { this._saver = v; }
 
+	/**
+	 * @property {*=>*}
+	 */
 	get reviver() { return this._reviver; }
 	set reviver(v) { this._reviver =v;}
 
+	get deleter() { return this._deleter; }
+	set deleter(v) { this._deleter =v;}
+
 	/**
 	 * @constructor
-	 * @param {Object} [opts=null] - initialization options.
+	 * @param {?Object} [opts=null] - initialization options.
 	 * @param {string} [opts.cacheKey=''] 
-	 * @param { string=>Promise<*>} [opts.loader=undefined] - function to load items not found in cache from a data store.
+	 * @param { string=>Promise<*> } [opts.loader=undefined] - function to load items not found in cache from a data store.
 	 * @param { (string,*)=>Promise<*> } [opts.saver=undefined] - function to store a keyed item in the data store.
 	 * @param { string=>Promise<boolean> } [opts.deleter=undefined] - function to delete cached item from a data store.
-	 * @param { string => Promise<boolean> } [opts.checker=undefined] - function to check the existence of an item in the data store.
+	 * @param { string=>Promise<boolean> } [opts.checker=undefined] - function to check the existence of an item in the data store.
 	 * @param { *=>* } [opts.reviver=undefined] optional function to revive objects loaded from data store.
 	 */
 	constructor( opts=null ) {
+
+		super();
 
 		if ( opts ) {
 
@@ -104,24 +118,22 @@ export default class Cache extends Emitter {
 	 * Retrieves or creates a subcache with the given key.
 	 * @param {string} subkey - key of the subcache. Final key is prefixed with
 	 * the key of the parent cache.
-	 * @param {function|null} [reviver=null]
+	 * @param {?function} [reviver=null]
 	 * @returns {Cache}
 	 */
 	subcache( subkey, reviver=null ) {
 
-		let subkey = this._subkey( this._cacheKey, subkey );
+		subkey = this._subkey( this._cacheKey, subkey );
 
 		let cache = this._dict[subkey];
 		if ( cache !== undefined && cache instanceof Cache ) return cache;
 
-		let cache = new Cache({
+		this._dict[subkey] = cache = new Cache({
 
 				loader:this.loader, saver:this.saver, checker:this.checker, deleter:this.deleter,
 				cacheKey:subkey,
 				reviver:reviver
-			});
-
-		this._dict[subkey] = cache;
+		});
 
 		this.emit( 'subcreate', this, subkey );
 
@@ -174,8 +186,7 @@ export default class Cache extends Emitter {
 	 */
 	async store( key, value ) {
 
-		let item = new Item(key, value);
-		this._dict[key] = item;
+		let item = this._dict[key] = new Item(key, value);
 
 		item.markSaved();
 
@@ -196,7 +207,7 @@ export default class Cache extends Emitter {
 	/**
 	 * Attempts to retrieve a value from the cache without checking the backing store.
 	 * @param {string} key
-	 * @returns {*} - Returns undefined if no value found. 
+	 * @returns {*} - Undefined if key invalid.
 	 */
 	get( key ) {
 
@@ -245,10 +256,10 @@ export default class Cache extends Emitter {
 	}
 
 	/**
-	 * backup any items that have not been saved within the given timespan.
+	 * Backup any items that have not been saved within the given timespan.
 	 * @async
 	 * @emits 'backup'
-	 * @param {number} time - time in ms since last save.
+	 * @param {number} [time=120000] - Time in ms since last save.
 	 * @returns {Promise}
 	 */
 	async backup( time=1000*60*2 ) {
@@ -292,8 +303,8 @@ export default class Cache extends Emitter {
 	 * Clear items from cache that have not been accessed recently.
 	 * Dirty entries are first saved to file.
 	 * @async
-	 * @param {number} time - Time in ms since last access,
-	 * for a cached file to be purged.
+	 * @param {number} [time=300000] - Time in ms since last access.
+	 * Items not accessed in this time are purged.
 	 */
 	async cleanup( time=1000*60*5 ) {
 
@@ -337,7 +348,7 @@ export default class Cache extends Emitter {
 
 	/**
 	 * Clean old items from cache without storing to backing store.
-	 * @param {number} time 
+	 * @param {number} time - Minimum time in ms since last access.
 	 */
 	_cleanNoSave( time ) {
 
@@ -360,15 +371,14 @@ export default class Cache extends Emitter {
 	}
 
 	/**
-	 * Removes an item from cache, but does not delete from data store.
+	 * Removes an item from cache, without deleting it from the data store.
 	 * @param {string} key 
 	 */
 	free( key ) { delete this._dict[key]; }
 
 
 	/**
-	 * Checks if the keyed data exists in the cache
-	 * or in the data store.
+	 * Checks if the keyed data exists in the cache or data store.
 	 * @async
 	 * @param {string} key
 	 * @returns {boolean}

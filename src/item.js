@@ -1,7 +1,7 @@
 /**
  * Item within the Cache.
  */
-export default class Item {
+module.exports = class Item {
 
 	/**
 	 * @constructor
@@ -24,8 +24,9 @@ export default class Item {
 	}
 
 	/**
-	 * 
-	 * @param {*} data 
+	 * Updates the data stored and sets the last access time
+	 * to the current time.
+	 * @param {*} data - data stored.
 	 */
 	update( data ) {
 
@@ -36,8 +37,8 @@ export default class Item {
 	}
 
 	/**
-	 * 
-	 * @param {number} [time=0] 
+	 * Mark the data as having been saved at the given time.
+	 * @param {number} [time=0] unix timestamp of save time.
 	 */
 	markSaved( time=0 ) {
 		this.lastSave = time || Date.now();
