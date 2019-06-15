@@ -1,6 +1,6 @@
 {
   "name": "archcache",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "description": "Simple abstract caching interface for in-memory cache.",
   "main": "index.js",
   "scripts": {
