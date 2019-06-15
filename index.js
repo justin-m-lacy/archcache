@@ -290,7 +290,7 @@ module.exports = class Cache extends Emitter {
 
 		} // for
 
-		Promise.all( saves ).then(
+		return Promise.all( saves ).then(
 			vals=>{
 				this.emit( 'backup', this, vals );
 				return vals;
