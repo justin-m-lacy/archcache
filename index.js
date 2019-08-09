@@ -162,7 +162,7 @@ module.exports = class Cache extends Emitter {
 		//console.log( 'fetching from file: ' + key );
 		try {
 			let val = await loader( this._cacheKey + key );
-			if ( val ) {
+			if ( val !== undefined ) {
 
 				if ( reviver ) val = this.reviver(val);
 				this._dict[key] = new Item(key, val, false );
