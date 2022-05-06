@@ -2,9 +2,10 @@
   "name": "archcache",
   "version": "1.0.3",
   "description": "Simple abstract caching interface for in-memory cache.",
-  "main": "index.js",
+  "main": "lib/index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "prepare": "tsc",
+    "build": "tsc"
   },
   "repository": {
     "type": "git",
@@ -23,5 +24,8 @@
   "license": "ISC",
   "dependencies": {
     "eventemitter3": "^3.1.0"
+  },
+  "devDependencies": {
+    "typescript": "^4.6.4"
   }
 }

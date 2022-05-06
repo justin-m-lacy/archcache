@@ -1,0 +1,44 @@
+{
+  "compilerOptions": {
+    "rootDir": "./",
+    "baseUrl": "./",
+    "outDir": "lib",
+    "target": "esnext",
+    "module": "commonjs",
+    "declaration": true,
+    "useDefineForClassFields": true,
+    "moduleResolution": "node",
+    "strict": true,
+    "jsx": "preserve",
+    "skipLibCheck": true,
+    "sourceMap": true,
+    "incremental": false,
+    "resolveJsonModule": true,
+    "esModuleInterop": true,
+    "allowSyntheticDefaultImports": true,
+    "forceConsistentCasingInFileNames": true,
+    "types": [
+      "node",
+    ],
+    "paths": {
+      "@src/*": [
+        "./src/*"
+      ]
+    },
+    "lib": [
+      "es6",
+      "DOM"
+    ]
+  },
+  "exclude": [
+    "dist",
+    "node_modules"
+  ],
+  "include": [
+    "index.ts",
+    "src/bot/**/*.ts",
+    "src/bot/**/*.js",
+    "src/bot/**/*.d.ts",
+    "src/bot/**/*.tsx",
+  ]
+}

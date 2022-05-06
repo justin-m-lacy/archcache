@@ -1,0 +1,3 @@
+*.code-workspace
+lib
+node_modules

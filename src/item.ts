@@ -1,7 +1,14 @@
 /**
  * Item within the Cache.
  */
-module.exports = class Item {
+export default class Item {
+
+	lastAccess: number;
+	lastSave: number;
+	dirty: boolean;
+	readonly key: string;
+
+	data: any;
 
 	/**
 	 * @constructor
@@ -9,14 +16,14 @@ module.exports = class Item {
 	 * @param {*} data 
 	 * @param {boolean} [dirty=true] 
 	 */
-	constructor( key, data, dirty=true ) {
+	constructor(key: string, data: any, dirty: boolean = true) {
 
 		this.key = key;
 
 		this.lastAccess = Date.now();
 
 		this.dirty = dirty;
-		if ( dirty ) this.lastSave = 0;
+		if (dirty) this.lastSave = 0;
 		else this.lastSave = this.lastAccess;
 
 		this.data = data;
@@ -28,7 +35,7 @@ module.exports = class Item {
 	 * to the current time.
 	 * @param {*} data - data stored.
 	 */
-	update( data ) {
+	update(data: any) {
 
 		this.data = data;
 		this.lastAccess = Date.now();
@@ -40,7 +47,7 @@ module.exports = class Item {
 	 * Mark the data as having been saved at the given time.
 	 * @param {number} [time=0] unix timestamp of save time.
 	 */
-	markSaved( time=0 ) {
+	markSaved(time: number = 0) {
 		this.lastSave = time || Date.now();
 		this.dirty = false;
 	}
