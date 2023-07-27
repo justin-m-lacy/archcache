@@ -1,22 +1,22 @@
 /**
  * Item within the Cache.
  */
-export default class Item {
+export default class Item<T> {
 
 	lastAccess: number;
 	lastSave: number;
 	dirty: boolean;
 	readonly key: string;
 
-	data: any;
+	data: T;
 
 	/**
 	 * @constructor
 	 * @param {string} key 
-	 * @param {*} data 
+	 * @param  data 
 	 * @param {boolean} [dirty=true] 
 	 */
-	constructor(key: string, data: any, dirty: boolean = true) {
+	constructor(key: string, data: T, dirty: boolean = true) {
 
 		this.key = key;
 
@@ -35,7 +35,7 @@ export default class Item {
 	 * to the current time.
 	 * @param {*} data - data stored.
 	 */
-	update(data: any) {
+	update(data: T) {
 
 		this.data = data;
 		this.lastAccess = Date.now();

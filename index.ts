@@ -2,26 +2,26 @@
 import Emitter from 'eventemitter3';
 import Item from './src/item';
 
-export type Loader = (key: string) => Promise<any>;
+export type Loader<T> = (key: string) => Promise<T>;
 export type Saver = (key: string, data: any) => Promise<any>;
 export type Deleter = (key: string) => Promise<boolean>;
 export type Checker = (key: string) => Promise<boolean>;
-export type Reviver = (data: any) => any;
+export type Reviver<T> = (data: any) => T;
 
 
-export type CacheOpts = {
+export type CacheOpts<T> = {
 
 	cacheKey: string,
 	/**
 	 * function to load items not found in cache from a data
 	 * key is the key of the item not found.
 	 */
-	loader?: Loader;
+	loader?: Loader<T>;
 	/**
 	 * function to store data at key.
 	 */
 	saver?: Saver;
-	reviver?: Reviver;
+	reviver?: Reviver<T>;
 	/**
 	 * function to call when item is being deleted from cache.
 	 */
@@ -39,38 +39,26 @@ export type CacheOpts = {
  * Setting option properties on parent Cache will not propagate changes
  * to subcaches. Use settings() function.
  */
-export default class Cache extends Emitter {
+export default class Cache<T=any> extends Emitter {
 
-	/**
-	 * @property {string}
-	 */
 	get cacheKey() { return this._cacheKey; }
 	set cacheKey(v) {
 		this._cacheKey = this._fixKey(v);
 	}
 
-	/**
-	 * @property {string=>Promise<*> }
-	 */
 	get loader() { return this._loader; }
 	set loader(v) { this._loader = v; }
 
-	/**
-	 * @property {(string,*)=>Promise<*>}
-	 */
 	get saver() { return this._saver; }
 	set saver(v) { this._saver = v; }
 
-	/**
-	 * @property {*=>*}
-	 */
 	get reviver() { return this._reviver; }
 	set reviver(v) { this._reviver = v; }
 
 	get deleter() { return this._deleter; }
 	set deleter(v) { this._deleter = v; }
 
-	private _dict: { [key: string]: Item | Cache } = {};
+	private _dict: Map<string, Item<T>|Cache<T>> = new Map();
 	get data() { return this._dict; }
 
 	lastAccess: number = 0;
@@ -80,13 +68,13 @@ export default class Cache extends Emitter {
 	 * function to load items not found in cache from a data
 	 * key is the key of the item not found.
 	 */
-	_loader?: Loader;
+	_loader?: Loader<T>;
 
 	/**
 	 * function to store data at key.
 	 */
 	_saver?: Saver;
-	_reviver?: Reviver;
+	_reviver?: Reviver<T>;
 	/**
 	 * function to call when item is being deleted from cache.
 	 */
@@ -98,7 +86,7 @@ export default class Cache extends Emitter {
 	 */
 	_checker?: (key: string) => Promise<boolean>
 
-	constructor(opts?: CacheOpts) {
+	constructor(opts?: CacheOpts<T>) {
 
 		super();
 
@@ -131,7 +119,7 @@ export default class Cache extends Emitter {
 	 * @param {boolean} [propagate=true] - whether the settings should be propagated
 	 * to child caches.
 	 */
-	settings(opts: CacheOpts, propagate: boolean = true) {
+	settings(opts: CacheOpts<T>, propagate: boolean = true) {
 
 		if (opts.hasOwnProperty('loader')) this._loader = opts.loader;
 		if (opts.hasOwnProperty('saver')) this._saver = opts.saver;
@@ -144,14 +132,14 @@ export default class Cache extends Emitter {
 
 		if (propagate) {
 
-			let dict = this._dict;
+			const dict = this._dict;
 			var baseKey = this.cacheKey;
 
 			for (let k in dict) {
 
-				var item = dict[k];
+				var item = dict.get(k);
 
-				if (item instanceof Cache) {
+				if (item instanceof Cache<T>) {
 					if (newKey) opts.cacheKey = this._subkey(baseKey, k);
 					item.settings(opts);
 				}
@@ -169,22 +157,21 @@ export default class Cache extends Emitter {
 	 * @param {?function} [reviver=null]
 	 * @returns {Cache}
 	 */
-	subcache(subkey: string, reviver?: Reviver) {
+	subcache(subkey: string, reviver?: Reviver<T>) {
 
 		subkey = this._subkey(this._cacheKey, subkey);
 
-		let cache = this._dict[subkey];
-		if (cache !== undefined && cache instanceof Cache) return cache;
+		let cache = this._dict.get(subkey);
+		if (cache !== undefined && cache instanceof Cache<T>) return cache;
 
-		this._dict[subkey] = cache = new Cache({
-
+		this._dict.set(subkey, cache = new Cache<T>({
 			loader: this.loader,
 			saver: this.saver,
 			checker: this._checker,
 			deleter: this.deleter,
 			cacheKey: subkey,
 			reviver: reviver
-		});
+		}));
 
 		this.emit('subcreate', this, subkey);
 
@@ -200,7 +187,7 @@ export default class Cache extends Emitter {
 	 */
 	async fetch(key: string) {
 
-		let item = this._dict[key];
+		const item = this._dict.get(key);
 		if (item) {
 			item.lastAccess = Date.now();
 			return item.data;
@@ -211,15 +198,14 @@ export default class Cache extends Emitter {
 		//console.log( 'fetching from file: ' + key );
 		try {
 
-			let reviver = this.reviver;
-			let val = await this.loader(this._cacheKey + key);
-			if (val !== undefined) {
+			const reviver = this.reviver;
+			const data = await this.loader(this._cacheKey + key);
+			if ( data === undefined ) return undefined;
+		
+				const value = reviver ? reviver(data) : data;
+				this._dict.set(key, new Item(key, value, false) );
 
-				if (reviver) val = reviver(val);
-				this._dict[key] = new Item(key, val, false);
-
-			}
-			return val;
+			return value;
 
 		} catch (e) {
 
@@ -232,13 +218,14 @@ export default class Cache extends Emitter {
 	/**
 	 * Caches and attempts to store value to backing store.
 	 * @async
-	 * @param {string} key
-	 * @param {*} value - value to store.
+	 * @param key
+	 * @param value - value to store.
 	 * @returns {Promise}
 	 */
-	async store(key: string, value: any) {
+	async store(key: string, value: T) {
 
-		let item = this._dict[key] = new Item(key, value);
+		const item = new Item(key, value);
+		this._dict.set(key, item );
 
 		item.markSaved();
 
@@ -246,9 +233,7 @@ export default class Cache extends Emitter {
 
 			return this.saver(this._cacheKey + key, value).then(
 
-
-				// todo: returns null on success and an error on reject.
-				// maybe bad practice?
+				// returns null on success and an error on reject.
 				null, err => {
 					return err;
 				}
@@ -265,7 +250,7 @@ export default class Cache extends Emitter {
 	 */
 	get(key: string): any {
 
-		let it = this._dict[key];
+		const it = this._dict.get(key);
 		if (it !== undefined) {
 			it.lastAccess = Date.now();
 			return it.data;
@@ -282,9 +267,9 @@ export default class Cache extends Emitter {
 	 */
 	cache(key: string, value: any) {
 
-		let cur = this._dict[key];
+		const cur = this._dict.get(key);
 		if (cur instanceof Item) cur.update(value);
-		else this._dict[key] = new Item(key, value);
+		else this._dict.set(key, new Item(key, value));
 
 	}
 
@@ -296,8 +281,7 @@ export default class Cache extends Emitter {
 	 */
 	async delete(key: string) {
 
-		delete this._dict[key];
-
+		this._dict.delete(key);
 		if (this.deleter != null) {
 
 			return this.deleter(this._cacheKey + key).then(
@@ -328,13 +312,13 @@ export default class Cache extends Emitter {
 
 		for (let k in dict) {
 
-			var item = dict[k];
-			if (item instanceof Cache) {
+			const item = dict.get(k);
+			if (item instanceof Cache<T>) {
 
 				//subcache.
 				saves.push(item.backup(time));
 
-			} else if (item.dirty && (now - item.lastSave) > time) {
+			} else if (item && item.dirty && (now - item.lastSave) > time) {
 
 				saves.push(saver(this._cacheKey + item.key, item.data).then(
 					null, err => err
@@ -362,25 +346,25 @@ export default class Cache extends Emitter {
 	 */
 	async cleanup(time: number = 1000 * 60 * 5): Promise<any[] | void> {
 
-		let saver = this.saver;
+		const saver = this.saver;
 		if (!saver) return this._cleanNoSave(time);
 
-		let now = Date.now();
-		let dict = this._dict;
+		const now = Date.now();
+		const dict = this._dict;
 
-		let saves = [];
+		const saves = [];
 
 		for (let k in dict) {
 
-			var item = dict[k];
+			const item = dict.get(k);
 			if (item instanceof Cache) {
 
 				saves.push(item.cleanup(time));
 
-			} else if (now - item.lastAccess > time) {
+			} else if (item && now - item.lastAccess > time) {
 
 				// done first to prevent race conditions on save.
-				delete dict[k];
+				dict.delete(k);
 
 				if (item.dirty) {
 
@@ -406,18 +390,18 @@ export default class Cache extends Emitter {
 	 */
 	_cleanNoSave(time: number) {
 
-		let now = Date.now();
-		let dict = this._dict;
+		const now = Date.now();
+		const dict = this._dict;
 
 		for (let k in dict) {
 
-			var item = dict[k];
+			const item = dict.get(k);
 			if (item instanceof Cache) {
 
 				item._cleanNoSave(time);
 
-			} else if (now - item.lastAccess > time) {
-				delete dict[k];
+			} else if (item && now - item.lastAccess > time) {
+				dict.delete(k);
 			}
 
 		} // for
@@ -428,7 +412,7 @@ export default class Cache extends Emitter {
 	 * Remove an item from cache, without deleting it from the data store.
 	 * @param {string} key
 	 */
-	free(key: string) { delete this._dict[key]; }
+	free(key: string) { this._dict.delete(key); }
 
 
 	/**
@@ -439,7 +423,7 @@ export default class Cache extends Emitter {
 	 */
 	async exists(key: string) {
 
-		if (this._dict.hasOwnProperty(key)) return true;
+		if (this._dict.has(key)) return true;
 
 		if (this._checker) return this._checker(this._cacheKey + key);
 
@@ -454,7 +438,7 @@ export default class Cache extends Emitter {
 	 * @returns {boolean}
 	 */
 	has(key: string) {
-		return this._dict.hasOwnProperty(key);
+		return this._dict.has(key);
 	}
 
 	/**
