@@ -127,18 +127,17 @@ export default class Cache<T=any> extends Emitter {
 		if (opts.hasOwnProperty('deleter')) this._deleter = opts.deleter;
 		if (opts.hasOwnProperty('reviver')) this._reviver = opts.reviver;
 
-		var newKey = opts.hasOwnProperty('cacheKey');
+		const newKey = opts.hasOwnProperty('cacheKey');
 		this.cacheKey = newKey ? opts.cacheKey : this._cacheKey;
 
 		if (propagate) {
 
 			const dict = this._dict;
-			var baseKey = this.cacheKey;
+			const baseKey = this.cacheKey;
 
-			for (let k in dict) {
+			for (const k in dict) {
 
-				var item = dict.get(k);
-
+				const item = dict.get(k);
 				if (item instanceof Cache<T>) {
 					if (newKey) opts.cacheKey = this._subkey(baseKey, k);
 					item.settings(opts);
@@ -302,17 +301,16 @@ export default class Cache<T=any> extends Emitter {
 	 */
 	async backup(time: number = 1000 * 60 * 2): Promise<any[] | undefined> {
 
-		let saver = this.saver;
+		const saver = this.saver;
 		if (!saver) return;
 
-		let now = Date.now();
-		let dict = this._dict;
+		const now = Date.now();
+		const dict = this._dict;
 
-		let saves = [];
+		const saves = [];
 
-		for (let k in dict) {
+		for (const item of dict.values()) {
 
-			const item = dict.get(k);
 			if (item instanceof Cache<T>) {
 
 				//subcache.
@@ -354,7 +352,7 @@ export default class Cache<T=any> extends Emitter {
 
 		const saves = [];
 
-		for (let k in dict) {
+		for (const k in dict) {
 
 			const item = dict.get(k);
 			if (item instanceof Cache) {
@@ -393,7 +391,7 @@ export default class Cache<T=any> extends Emitter {
 		const now = Date.now();
 		const dict = this._dict;
 
-		for (let k in dict) {
+		for (const k in dict) {
 
 			const item = dict.get(k);
 			if (item instanceof Cache) {

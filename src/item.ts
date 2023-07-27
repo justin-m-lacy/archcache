@@ -3,8 +3,16 @@
  */
 export default class Item<T> {
 
+	/**
+	 * Timestamp when item was last accessed.
+	 */
 	lastAccess: number;
+
+	/**
+	 * Timestamp of last save to a backing store.
+	 */
 	lastSave: number;
+
 	dirty: boolean;
 	readonly key: string;
 
