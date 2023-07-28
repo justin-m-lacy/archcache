@@ -2,7 +2,7 @@
 import Emitter from 'eventemitter3';
 import Item from './src/item';
 
-export type Loader<T> = (key: string) => Promise<T>;
+export type Loader<Data=any> = (key: string) => Promise<Data>;
 export type Saver = (key: string, data: any) => Promise<any>;
 export type Deleter = (key: string) => Promise<boolean>;
 export type Checker = (key: string) => Promise<boolean>;
@@ -16,7 +16,7 @@ export type CacheOpts<T> = {
 	 * function to load items not found in cache from a data
 	 * key is the key of the item not found.
 	 */
-	loader?: Loader<T>;
+	loader?: Loader<any>;
 	/**
 	 * function to store data at key.
 	 */
@@ -68,7 +68,7 @@ export default class Cache<T=any> extends Emitter {
 	 * function to load items not found in cache from a data
 	 * key is the key of the item not found.
 	 */
-	_loader?: Loader<T>;
+	_loader?: Loader<any>;
 
 	/**
 	 * function to store data at key.
@@ -110,13 +110,13 @@ export default class Cache<T=any> extends Emitter {
 
 	/**
 	 *
-	 * @param {Object} opts - options being set.
-	 * @param { string=>Promise<*>} opts.loader - function to load items not found in cache from a data store.
-	 * @param { (string,*)=>Promise } opts.saver - function to store a keyed item in the data store.
-	 * @param { string => Promise<boolean> } opts.checker - function to check the existence of a keyed item in the data store.
-	 * @param { string=>Promise<boolean> } opts.deleter - function to delete cached items in a data store.
-	 * @param {string} [opts.cacheKey='']
-	 * @param {boolean} [propagate=true] - whether the settings should be propagated
+	 * @param opts - options being set.
+	 * @param  opts.loader - function to load items not found in cache from a data store.
+	 * @param  opts.saver - function to store a keyed item in the data store.
+	 * @param  opts.checker - function to check the existence of a keyed item in the data store.
+	 * @param  opts.deleter - function to delete cached items in a data store.
+	 * @param [opts.cacheKey='']
+	 * @param [propagate=true] - whether the settings should be propagated
 	 * to child caches.
 	 */
 	settings(opts: CacheOpts<T>, propagate: boolean = true) {
@@ -138,7 +138,7 @@ export default class Cache<T=any> extends Emitter {
 			for (const k in dict) {
 
 				const item = dict.get(k);
-				if (item instanceof Cache<T>) {
+				if (item instanceof Cache) {
 					if (newKey) opts.cacheKey = this._subkey(baseKey, k);
 					item.settings(opts);
 				}
@@ -151,19 +151,18 @@ export default class Cache<T=any> extends Emitter {
 
 	/**
 	 * Retrieves or creates a subcache with the given key.
-	 * @param {string} subkey - key of the subcache. Final key is prefixed with
+	 * @param subkey - key of the subcache. Final key is prefixed with
 	 * the key of the parent cache.
-	 * @param {?function} [reviver=null]
-	 * @returns {Cache}
+	 * @param  [reviver=null]
 	 */
-	subcache(subkey: string, reviver?: Reviver<T>) {
+	subcache<S extends T>(subkey: string, reviver?: Reviver<S>):Cache<S> {
 
 		subkey = this._subkey(this._cacheKey, subkey);
 
-		let cache = this._dict.get(subkey);
-		if (cache !== undefined && cache instanceof Cache<T>) return cache;
+		let cache = this._dict.get(subkey) as Cache<S>;
+		if (cache !== undefined && cache instanceof Cache) return cache;
 
-		this._dict.set(subkey, cache = new Cache<T>({
+		this._dict.set(subkey, cache = new Cache<S>({
 			loader: this.loader,
 			saver: this.saver,
 			checker: this._checker,
@@ -174,15 +173,15 @@ export default class Cache<T=any> extends Emitter {
 
 		this.emit('subcreate', this, subkey);
 
-		return cache;
+		return cache as Cache<S>;
 	}
 
 	/**
 	 * Attempts to find keyed value in the local cache.
 	 * If none is found, the value is loaded from the backing store.
 	 * @async
-	 * @param {string} key
-	 * @returns {Promise<*>} - returns undefined if the value is not found.
+	 * @param key
+	 * @returns - returns undefined if the value is not found.
 	 */
 	async fetch(key: string) {
 
@@ -202,7 +201,7 @@ export default class Cache<T=any> extends Emitter {
 			if ( data === undefined ) return undefined;
 		
 				const value = reviver ? reviver(data) : data;
-				this._dict.set(key, new Item(key, value, false) );
+				this._dict.set(key, new Item<T>(key, value, false) );
 
 			return value;
 
