@@ -11,7 +11,7 @@ export type Reviver<T> = (data: any) => T;
 
 export type CacheOpts<T> = {
 
-	cacheKey: string,
+	cacheKey?: string,
 	/**
 	 * function to load items not found in cache from a data
 	 * key is the key of the item not found.
@@ -31,7 +31,14 @@ export type CacheOpts<T> = {
 	 * function that checks the existence of item
 	 * in an underlying data store.
 	 */
-	checker?: Checker
+	checker?: Checker,
+
+	/**
+	 * Separator between cache keys of subcaches. Defaults to '/'
+	 * subcache keys are joined with the seperator and prepended
+	 * to the keys of items entered in the cache.
+	 */
+	subcacheSeparator?:string
 }
 
 
@@ -64,6 +71,8 @@ export default class Cache<T=any> extends Emitter {
 	lastAccess: number = 0;
 	_cacheKey: string;
 
+	_separator:string = '/';
+
 	/**
 	 * function to load items not found in cache from a data
 	 * key is the key of the item not found.
@@ -92,19 +101,16 @@ export default class Cache<T=any> extends Emitter {
 
 		if (opts) {
 
-			this._cacheKey = opts.cacheKey;
-
 			this._loader = opts.loader;
 			this._saver = opts.saver;
 			this._checker = opts.checker;
 			this._deleter = opts.deleter;
 			this._reviver = opts.reviver;
 
-		} else {
-
-			this._cacheKey = '/';
-
 		}
+
+		this._separator = opts?.subcacheSeparator ?? '/';
+		this._cacheKey = opts?.cacheKey ?? this._separator;
 
 	}
 
@@ -127,8 +133,8 @@ export default class Cache<T=any> extends Emitter {
 		if (opts.hasOwnProperty('deleter')) this._deleter = opts.deleter;
 		if (opts.hasOwnProperty('reviver')) this._reviver = opts.reviver;
 
-		const newKey = opts.hasOwnProperty('cacheKey');
-		this.cacheKey = newKey ? opts.cacheKey : this._cacheKey;
+		const keyChanged = opts.cacheKey !== this._cacheKey;
+		this.cacheKey = opts.cacheKey ?? this._cacheKey;
 
 		if (propagate) {
 
@@ -139,8 +145,15 @@ export default class Cache<T=any> extends Emitter {
 
 				const item = dict.get(k);
 				if (item instanceof Cache) {
-					if (newKey) opts.cacheKey = this._subkey(baseKey, k);
-					item.settings(opts);
+
+					const subkey = keyChanged ? this._subkey(baseKey, k) : undefined;
+					item.settings({
+
+						...opts,
+						cacheKey:subkey
+
+					});
+
 				}
 
 			}
@@ -444,8 +457,8 @@ export default class Cache<T=any> extends Emitter {
 	 * @returns {string}
 	 */
 	_fixKey(key: string) {
-		if (typeof key !== 'string') return '/';
-		if (key.length === 0 || key.charAt(key.length - 1) !== '/') return key + '/';
+		if (typeof key !== 'string') return this._separator;
+		if (key.length === 0 || key.charAt(key.length - 1) !== this._separator) return key + this._separator;
 		return key;
 	}
 
@@ -455,7 +468,7 @@ export default class Cache<T=any> extends Emitter {
 	 * @param {string} key
 	 * @returns {string} key created.
 	 */
-	_subkey(parentKey: string = '/', key: string = '') {
+	_subkey(parentKey: string = this._separator, key: string = '') {
 		return parentKey + this._fixKey(key);
 	}
 
