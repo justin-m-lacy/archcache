@@ -323,7 +323,7 @@ export default class Cache<T=any> extends Emitter {
 
 		for (const item of dict.values()) {
 
-			if (item instanceof Cache<T>) {
+			if (item instanceof Cache) {
 
 				//subcache.
 				saves.push(item.backup(time));
@@ -332,7 +332,7 @@ export default class Cache<T=any> extends Emitter {
 
 				saves.push(saver(this._cacheKey + item.key, item.data).then(
 					null, err => err
-				))
+				));
 
 			}
 
